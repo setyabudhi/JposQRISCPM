@@ -1,0 +1,71 @@
+<subtitle>jPOS Programmer's Guide</subtitle>
+<releaseinfo>{jpos_version}</releaseinfo>
+<copyright>
+  <year>1998-2015</year>
+  <holder>Alejandro Revilla / Uruguay</holder>
+</copyright>
+<legalnotice>
+  <para>
+    All rights reserved. No part of this document may be reproduced in any
+    form or by any electronic or mechanical means, including information
+    storage and retrieval systems, without permission in writing from
+    jPOS Software SRL (Uruguay).
+  </para>
+</legalnotice>
+<abstract>
+  <para>
+    jPOS is an ISO-8583 library/framework that can be used to
+    implement financial interchanges, protocol converters, 
+    payment gateways, credit card verification clients and 
+    servers (merchant/issuer/acquirer roles), etc.
+  </para>
+  <para>
+     This document describes jPOS' design, its internals and shows
+     you how to get the most out of it.
+  </para>
+</abstract>
+<authorgroup>
+  <author>
+    <personname>
+      <firstname>Alejandro</firstname>
+      <surname>Revilla</surname>
+      <othername role="mi">P</othername>
+    </personname>
+  </author>
+</authorgroup>
+<othercredit>
+  <personname>
+    <firstname>Dave</firstname>
+    <surname>Bergert</surname>
+  </personname>
+  <contrib>Extensive review, and multiple corrections</contrib>
+</othercredit>
+<othercredit>
+  <personname>
+    <firstname>Alwyn</firstname>
+    <surname>Schoeman</surname>
+  </personname>
+  <contrib>Review, Feedback, Corrections</contrib>
+</othercredit>
+<othercredit>
+  <personname>
+    <firstname>Andy</firstname>
+    <surname>Orrock</surname>
+  </personname>
+  <contrib>Extensive feedback and corrections</contrib>
+</othercredit>
+<othercredit>
+  <personname>
+    <firstname>Mark</firstname>
+    <surname>Salter</surname>
+  </personname>
+  <contrib>Extensive feedback and corrections</contrib>
+</othercredit>
+<othercredit>
+  <personname>
+    <firstname>Murtuza</firstname>
+    <surname>Chhil</surname>
+  </personname>
+  <contrib>Extensive feedback and corrections</contrib>
+</othercredit>
+

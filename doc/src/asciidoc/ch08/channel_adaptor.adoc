@@ -1,0 +1,205 @@
+[[channel_adaptor]]
+== ChannelAdaptor
+
+When jPOS acts as client from a TCP/IP standpoint, you'd most likely use
+the +ChannelAdaptor+ service to manage the low level socket connection.
+
+The +ChannelAdaptor+ uses the Space to communicate with other jPOS
+components, basically through two _Space queues_, one for *input*
+and the other one for *output*.
+
+image:images/channel_adaptor.png[alt="ChannelAdaptor"]
+
+The _in_ and _out_ naming convention is easy to remember if
+we think of them as *seen from the component's perspective*.
+
+So ChannelAdaptor is monitoring its input (_in_) queue for messages
+that are to be sent to the remote host, and places messages received
+from the remote host in its output (_out_) queue.
+
+[TIP]
+=====
+Most of the time, you won't have to deal with these queues,
+you'll just deal with the API provided by higher level components
+like *QMUX*.
+=====
+
+=== QBean descriptor
+
+As described in <<running_Q2>>, Q2 sorts the XML descriptors
+available in the +deploy+ directory alphabetically, as an easy
+way to orderly start services.
+
+We usually use the prefix **10_** for channels, so that when
+other components (such as MUXes that use the prefix '20_') start,
+they can use them right away on the first attempt.
+
+So a reasonable name for a channel descriptor can be something like
++10_xxx_channel.xml+.
+
+------------
+<channel-adaptor name='your-channel' logger="Q2">         <1>
+ <channel class="org.jpos.iso.channel.NACChannel" 
+       packager="org.jpos.iso.packager.GenericPackager"   <2>
+       header="6000000000">                               <3>
+  <property name="packager-config"                        <4> 
+           value="jar:packager/iso87binary.xml" />
+  <property name="host" value="127.0.0.1" />              <5>
+  <property name="port" value="8001" />                   
+  <property name="timeout" value="300000" />              <6>
+  <filter                                                 <7>
+      class="org.jpos.iso.filter.YourIncomingFilter" 
+      direction="incoming" />
+  <filter 
+      class="org.jpos.iso.filter.YourOutgoingFilter" 
+      direction="outgoing" />
+ </channel>
+ <in>your-channel-send</in>                               <8>
+ <out>your-channel-receive</out>                          <9>
+ <reconnect-delay>10000</reconnect-delay>                 <10>
+</channel-adaptor>
+------------
+<1> The element name +channel-adaptor+ is defined in +QFactory.properties+
+    (see <<writing_first_script>>) and implies that the class to
+    be instantiated is +org.jpos.q2.iso.ChannelAdaptor+. You can 
+    of course use another root element name and add the +class+
+    attribute if you wish.
+<2> In this example we use the +GenericPackager+ which is the most
+    flexible one, but of course, you can use any other custom
+    packager or some of the stock packagers such as +XMLPackager+
+    or +XML2003Packager+. For a complete list of available
+    packagers see link:https://github.com/jpos/jPOS/tree/master/jpos/src/main/java/org/jpos/iso/packager[]
+<3> Although not defined in the +ISOChannel+ interface, most channels 
+    have a +setHeader(String)+ method. If the +header+ attribute is
+    present in the child +channel+ element, ChannelAdaptor will use
+    reflection to call it. How this string is interpreted is specific
+    to each channel implementation, in this case, +NACChannel+ assumes
+    it's getting an hex string.
+<4> The +Configuration+ object is available to the packager, provided
+    it implements the +Configurable+ interface as it is the case of
+    the +GenericPackager+.
+<5> The +Configuration+ object is also available to the channel 
+    implementation (in this case +NACChannel+ which happens to
+    implement the +Configurable+ interface). The host and port
+    properties in this case are self explanatory, they point
+    to the remote host.
+<6> Channel level timeout in milliseconds. If the channel does not
+    receive any traffic in the configured timeout, it will disconnect.
+    Having a channel level timeout as described here is 
+    *highly recommended*.
+<7> The +channel+ element can have multiple optional +filter+ 
+    child elements (see <<isofilter>>). The +direction+ attribute
+    is optional, if not present (or if its value is +both+), 
+    the filter is configured to process both incoming as well
+    as outgoing messages.
+<8> Space queue used to receive messages to be transmitted to the
+    remote endpoint.
+<9> Messages received from the remote endpoint are placed in
+    this queue.
+<10> If the connection to the remote host breaks, ChannelAdaptor
+    will try to reconnect after a reasonable delay, expressed
+    in millis. If this element is not present, a default of
+    10 seconds (10000ms) will be used.
+=== SSL connections
+
+Most channel implementations accept a socket factory, that can be
+configured by adding the properties +socketFactory+ with additional
+optional configuration properties required by its implementation.
+
+In case of the provided +org.jpos.iso.SunJSSESocketFactory+, the additional
+properties are +storepassword+, +keypassword+ and +keystore+.
+
+The configuration would look like this:
+
+------
+ <property name="socketFactory" value="org.jpos.iso.SunJSSESocketFactory" />
+ <property name="storepassword" value="password" />
+ <property name="keypassword"   value="password" />
+ <property name="keystore" value="cfg/mykeystore.ks" />
+------
+
+[TIP]
+=====
+Please note that these properties are specific to the channel, so they go
+inside the 'channel' element, not the outer 'channel-adaptor' element.
+=====
+
+=== Handling alternate connections
+
+This is not a feature of the ChannelAdaptor but a feature of BaseChannel,
+a support class inherited by most channel implementations (but not all of
+them, so please check). Channel implementations extending BaseChannel can
+take advantage of the +alternate-host+ with its companion +alternate-port+
+configuration property. There can be many of those, but the number of
+instances have to match (i.e. if you have 4 +alternate-host+ definitions,
+you need to have 4 +alternate-port+ definitions).
+
+When ChannelAdaptor calls the +connect+ method in the underlying channel,
+BaseChannel will attempt a connection to the main host/port. If that
+fails, it will attempt the alternate hosts list.
+
+The configuration looks like this:
+
+------
+<channel-adaptor name='your-channel' logger="Q2"> 
+ <channel class="org.jpos.iso.channel.NACChannel" 
+    ....
+    ....
+    <property name="alternate-host" value="192.168.1.2" />
+    <property name="alternate-host" value="192.168.1.3" />
+    <property name="alternate-host" value="192.168.1.4" />
+    <property name="alternate-host" value="192.168.1.5" />
+    <property name="alternate-port" value="1000" />
+    <property name="alternate-port" value="1000" />
+    <property name="alternate-port" value="1000" />
+    <property name="alternate-port" value="1000" />
+    ....
+    ....
+ </channel>
+</channel-adaptor>
+------
+
+[TIP]
+=====
+Same as with the previous SSL socket factory, these properties are 
+specific to the channel, so they go inside the 'channel' element, not 
+the outer 'channel-adaptor' element.
+=====
+
+=== Channel timeout, keep-alive, connection-timeout
+
+We strongly recommend that you add a channel-level timeout (expressed in 
+milliseconds). There are many situations where a network connection can
+go wrong (i.e. an intermediate firewall may timeout an inactive socket
+connection without notify the endpoint). If you know that your link has
+to have traffic at least say every minute (i.e. because you're sending
+network management 800-class messages back and forth), we recommend that
+you set a timeout for say 70 or 80 seconds. 
+
+You can increase that value, but making it very big will have a negative impact
+in your application that will learn that a channel is not usable only by the
+time it needs to send a real authorization message, causing a reconnection
+at that time, instead of ahead of time, while it was idle.
+
+Setting the keep-alive (+true/false+) would set the low level +SO_KEEPALIVE+
+flag at the socket level for situations where no network management messages
+are exchanged.
+
+The +connection-timeout+ property can be used to set a smaller timeout at
+connect time, this is useful when combined with the +alternate-host+ and
++alternate-port+ set of properties.
+
+------
+<channel-adaptor name='your-channel' logger="Q2"> 
+ <channel class="org.jpos.iso.channel.NACChannel" 
+    ....
+    ....
+    <property name="connection-timeout" value="15000" />  <!-- 15 seconds -->
+    <property name="timeout" value="300000" />            <!-- five minutes -->
+    <property name="keep-alive" value="true" />
+    ....
+    ....
+ </channel>
+</channel-adaptor>
+------
+

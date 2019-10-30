@@ -1,0 +1,28 @@
+apply plugin: 'groovy'
+
+repositories {
+    mavenCentral()
+    maven { url 'http://repository.sonatype.org/content/groups/public' }
+    mavenLocal()
+}
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+
+dependencies {
+    compile localGroovy()
+    compile 'xerces:xercesImpl:2.11.0',
+            'xml-resolver:xml-resolver:1.2',
+            'saxon:saxon:6.5.3',
+            'org.apache.xmlgraphics:fop:1.1',
+            'docbook:docbook-xml:4.5',
+            'org.apache.avalon.framework:avalon-framework-api:4.3.1',
+            'org.apache.avalon.framework:avalon-framework-impl:4.3.1',
+            'net.sf.xslthl:xslthl:2.1.0',
+            'net.sf.docbook:docbook-xsl:1.78.1:ns-resources@zip',
+            'net.sf.docbook:docbook-xsl-saxon:1.0.0',
+            gradleApi()
+
+}
+

@@ -1,0 +1,300 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'biz.aQute.bnd:biz.aQute.bnd.gradle:4.1.0'
+        classpath 'org.owasp:dependency-check-gradle:5.2.1'
+    }
+}
+apply plugin: 'biz.aQute.bnd.builder'
+apply plugin: 'org.owasp.dependencycheck'
+
+import aQute.bnd.gradle.Bundle
+
+dependencies {
+    compile libraries.jdom
+    compile libraries.jdbm
+    compile libraries.sleepycat_je
+    compile libraries.commons_cli
+    compile libraries.jline
+    compile libraries.beanshell
+    compile libraries.javatuples
+    compile libraries.osgi_core
+    compile libraries.bouncycastle
+    compile libraries.sshd
+    compile libraries.slf4j_api
+    compile libraries.javassist
+    compile libraries.hdrhistogram
+    compile libraries.yaml;
+
+    testCompile libraries.commons_lang3
+    testCompile libraries.hamcrest
+    testCompile libraries.fest_assert
+    testCompile libraries.xmlunit
+    testImplementation libraries.junit
+    testCompile(libraries.mockito) {
+        exclude(module: 'hamcrest-core')
+    }
+    testCompile libraries.mockito_jupiter
+
+    //  JSONPackager on hold
+    //    compile (libraries.jsonsimple) {
+    //        exclude(module: 'junit')
+    //        exclude(module: 'hamcrest-core')
+    //    }
+    // Integrated OSGI framework
+    // compile 'org.apache.felix:org.apache.felix.framework:5.0.0'
+}
+
+def archiveJarName="${project.name}-${project.version}.jar"
+def q2ArchiveJarName="${project.name}-${project.version}-q2.jar"
+def jposCopySpec = copySpec {
+    def cfg = new Properties()
+    def target = project.hasProperty('target') ? target : 'devel'
+    cfg.put('jarname', q2ArchiveJarName.toString())
+    cfg.put('target', target.toString())
+    File cfgFile = file("${target}.properties")
+    if (cfgFile.exists()) {
+        cfgFile.withInputStream{
+            cfg.load(it);   
+        }
+    }
+    from(file("src/dist")) {
+        exclude 'cfg/*.lmk'
+        exclude 'cfg/*.jks'
+        exclude 'cfg/*.ks'
+        exclude 'cfg/*.ser'
+        exclude 'cfg/authorized_keys'
+        filter(
+            org.apache.tools.ant.filters.ReplaceTokens, 
+            tokens: cfg
+        )
+    }
+    from(file("src/dist")) {
+        include 'cfg/*.lmk'
+        include 'cfg/*.ks'
+        include 'cfg/*.jks'
+        include 'cfg/*.ser'
+        include 'cfg/authorized_keys'
+        fileMode 0400
+    }
+    from(file("${project.buildDir}/${project.libsDirName}/${q2ArchiveJarName}"))
+
+    into("lib") {
+        from(configurations.runtime)
+    }
+}
+
+def moduleName='org.jpos.jpos'
+def bundleVendor='jPOS.org'
+def bundleDescription="jPOS ${project.version}"
+def bundleActivator = 'org.jpos.q2.Activator'
+def bundleImportPackage = 'javax.crypto,javax.crypto.spec,javax.management,javax.naming,javax.net.ssl,javax.security.cert,javax.swing,javax.swing.border,javax.swing.event,javax.swing.table,javax.swing.text,javax.swing.text.html,javax.swing.tree,javax.xml.transform,javax.xml.transform.stream,org.osgi.framework;version="[1.6,2)",org.osgi.framework.launch;version="[1.0,2)",org.w3c.dom,org.xml.sax,org.xml.sax.helpers,org.xml.sax.ext'
+def bundleExportPackage = 'org.jpos.bsh,org.jpos.core,org.jpos.iso,org.jpos.iso.channel,org.jpos.iso.filter,org.jpos.iso.gui,org.jpos.iso.header,org.jpos.iso.packager,org.jpos.iso.validator,org.jpos.q2,org.jpos.q2.cli,org.jpos.q2.install,org.jpos.q2.iso,org.jpos.q2.qbean,org.jpos.q2.security,org.jpos.q2.ui,org.jpos.security,org.jpos.security.jceadapter,org.jpos.space,org.jpos.tlv,org.jpos.transaction,org.jpos.transaction.gui,org.jpos.transaction.participant,org.jpos.ui,org.jpos.ui.action,org.jpos.ui.factory,org.jpos.util,org.jpos.emv,org.jpos.core.handlers.exception,org.jpos.rc'
+def bundleLicense = 'http://jpos.org/license'
+def bundleDocURL = 'http://jpos.org/doc/javadoc/index.html'
+
+task listJars {
+    doLast {
+        configurations.testCompile.each { File file -> println file.name }
+        println "    libsDir: ${project.libsDir}"
+        println "libsDirName: ${project.libsDirName}"
+        println "libsDirName: ${project.libsDirName}"
+        println "    project: ${project.buildDir}"
+    }
+}
+
+jar () {
+    manifest {
+        def manifestClasspath = configurations.runtime.collect { "lib/" + it.getName() }.join(' ') 
+        attributes 'Implementation-Title': 'jPOS', 
+                   'Implementation-Version': version,
+                   'Automatic-Module-Name': moduleName
+    }
+    bnd (
+        'Bundle-Vendor': bundleVendor,
+        'Bundle-License': bundleLicense,
+        'Bundle-DocURL': bundleDocURL,
+        'Bundle-Description': bundleDescription,
+        'Bundle-Activator': bundleActivator,
+        'Import-Package': bundleImportPackage,
+        'Export-Package': bundleExportPackage
+    )
+}
+
+task q2jar (type: Bundle) {
+    dependsOn jar
+    classifier = 'q2'
+    from sourceSets.main.output.classesDirs, sourceSets.main.output.resourcesDir
+    manifest {
+        // classesDir = new File(buildDir, 'classes/java/main') // sourceSets.main.output.classesDir deprecated
+        // classpath = sourceSets.main.runtimeClasspath
+        def manifestClasspath = configurations.runtime.collect { "lib/" + it.getName() }.join(' ') 
+        attributes 'Implementation-Title': 'jPOS', 
+                   'Implementation-Version': version,
+                   'Automatic-Module-Name': moduleName,
+                   'Main-Class': 'org.jpos.q2.Q2',
+                   'Class-Path': manifestClasspath
+    }
+    bnd (
+        'Bundle-Vendor': bundleVendor,
+        'Bundle-License': bundleLicense,
+        'Bundle-DocURL': bundleDocURL,
+        'Bundle-Description': bundleDescription,
+        'Bundle-Activator': bundleActivator,
+        'Import-Package': bundleImportPackage,
+        'Export-Package': bundleExportPackage,
+        'Include-Resource': configurations.runtime.collect { '-lib/' + it.getName() }.join(' ')
+    )
+}
+
+task bundleFull (type: Bundle) {
+    dependsOn jar
+    classifier = 'bundle-full'
+    from sourceSets.main.output.classesDirs, sourceSets.main.output.resourcesDir
+    manifest {
+        // classesDir = new File(buildDir, 'classes/java/main') // sourceSets.main.output.classesDir deprecated
+        // classpath = sourceSets.main.runtimeClasspath
+        def manifestClasspath = configurations.runtime.collect { "lib/" + it.getName() }.join(' ') 
+        attributes 'Implementation-Title': 'jPOS', 
+                   'Implementation-Version': version,
+                   'Automatic-Module-Name': moduleName,
+                   'Main-Class': 'org.jpos.q2.Q2',
+                   'Class-Path': manifestClasspath
+    }
+    bnd (
+            'Bundle-Vendor': bundleVendor,
+            'Bundle-License': bundleLicense,
+            'Bundle-DocURL': bundleDocURL,
+            'Bundle-Description': bundleDescription,
+            'Bundle-Activator': bundleActivator,
+            'Import-Package': bundleImportPackage,
+            'Export-Package': bundleExportPackage,
+            'Include-Resource': configurations.runtime.collect { '-lib/' + it.getName() }.join(' ')
+    )
+    into ('lib') {
+        from configurations.runtime {
+            exclude 'org.osgi.core*.jar'
+        }
+    }
+}
+
+task sourceJar( type: Jar ) {
+    classifier = "sources"
+    from sourceSets.main.allSource
+}
+
+
+task javadocJar (type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from new File(project.buildDir, 'docs/javadoc')
+}
+
+artifacts {
+    archives sourceJar, javadocJar, bundleFull
+}
+
+task dist (type: Tar) { 
+    dependsOn 'q2jar', 'assemble', 'sourceJar'
+    compression = Compression.GZIP
+    includeEmptyDirs true
+    with jposCopySpec
+    into "jpos-$version"
+    extension "tar.gz"
+}
+
+task zip (type: Zip) { 
+    dependsOn 'q2jar', 'assemble', 'sourceJar'
+    includeEmptyDirs true
+    includeEmptyDirs true
+    with jposCopySpec
+    into "jpos-$version"
+}
+
+task version (type: JavaExec, dependsOn: classes) {
+    description = "Display jPOS Version"
+    main = 'org.jpos.q2.Q2'
+    args = "--version".split().toList()
+    classpath sourceSets.main.runtimeClasspath, configurations.runtime
+}
+
+class GitRevisionTask extends DefaultTask
+{
+    @InputFile @Optional
+    File gitHead
+    boolean gotHead
+
+    File getRefFile()
+    {
+        return new File(gitHead.parent,gitHead.text.replace('ref: ', '').trim())
+    }
+
+    @OutputFile
+    File outputFile
+
+    @TaskAction
+    public void writeFile()
+    {
+        Properties props=new Properties()
+        if (gotHead) {
+            File ref=getRefFile()
+            if (ref.exists()) {
+                props.put("branch",ref.getName())
+                props.put("revision",ref.text.substring(0,7))
+            } else {
+                props.put("branch", "detached");
+                props.put("revision", gitHead.text.substring(0,7))
+            }
+        } else {
+            props.put("branch", "unknown");
+            props.put("revision", "unknown");
+        }
+        props.store(new FileOutputStream(outputFile),"Revision Properties")
+    }
+}
+
+class BuildTimestampTask extends DefaultTask {
+    // We don't want to declare @OutputFile, we need a fresh timestamp on every run
+    File outputFile
+
+    @TaskAction
+    public void writeFile() {
+        new File(outputFile.parent).mkdirs()
+        Properties props=new Properties()
+        props.put("version", project.version);
+        props.put("buildTimestamp", new Date().format("yyyy-MM-dd HH:mm:ss z"));
+        props.store(new FileOutputStream(outputFile),"Revision Properties")
+    }
+}
+
+task createRevisionPropertyFile(type: GitRevisionTask) {
+    gitHead = "$rootDir/.git/HEAD" as File
+    gotHead = gitHead.exists()
+    if (!gotHead)
+        gitHead = null;
+    outputFile = "$sourceSets.main.output.resourcesDir/org/jpos/q2/revision.properties" as File
+}
+
+task createBuildTimestampPropertyFile(type: BuildTimestampTask) {
+    outputFile = "$sourceSets.main.output.resourcesDir/org/jpos/q2/buildinfo.properties" as File
+}
+
+processResources.dependsOn createBuildTimestampPropertyFile, createRevisionPropertyFile
+processResources.outputs.upToDateWhen{ false } // issue with Gradle 2.4 confused about UP-TO-DATE (works OK with 2.3)
+
+task installApp(type: Sync) {
+    dependsOn q2jar
+    delete "${project.buildDir}/install/${project.name}/cfg"
+    description 'Installs jPOS based application'
+    into { file("${project.buildDir}/install/${project.name}") }
+    with jposCopySpec
+}
+
+task viewTests (description: 'Open Test Reports') {
+    doLast {
+        Class.forName("java.awt.Desktop").newInstance().browse(
+            new File("${buildDir}/reports/tests/test", 'index.html').toURI())
+    }
+}
+

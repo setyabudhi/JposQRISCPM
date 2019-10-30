@@ -1,0 +1,283 @@
+== TransactionManager implementation
+
+The +TransactionManager+ is a jPOS Service that monitors a Space queue waiting
+for transactions to be processed. These transactions are expected to be any
++Serializable+ objects, but in most jPOS applications those are actually 
++org.jpos.transaction.Context+ objects.
+
+The following image shows a typical scenario:
+
+* A QServer (or a QMUX) receives a message and delegate its handling to an +ISORequestListener+
+  implementation
+* The +ISORequestListener+ creates an instance of a +Context+, puts there some information relevant
+  to the transaction (such as a reference to the received +ISOMsg+ and the originating +ISOSource+)
+  and place it in a well known space, using a well known +key+. We use the space as a _queue_
+  so we call it _queue_, but it's just a regular entry in the space under a well known name.
+* The +TransactionManager+ picks the entry from the space (using a regular +in+ operation) 
+  and runs the previously described two-phase commit protocol on the configured participants.
+
+image:images/tm_example.png[width="75%",alt="TransactionManager Example"]
+
+Each participant is instantiated and configured just once by the TransactionManager at
+init time, they use the _Flyweight pattern_, but the TransactionManager uses several
+simultaneous sessions to handle transactions.
+
+image:images/tm_sessions.png[width="75%",alt="TransactionManager Sessions"]
+
+[IMPORTANT]
+===========
+In the previous paragraph we mention that the TransactionManager uses the
+_Flyweight pattern_.  It is extremely important to understand the pattern
+before implementing participants. Each participant is instantiated once, but
+multiple sessions can run simultaneously. In addition, sessions can be paused
+and continued. All session information must be stored in the Context, which the
+transaction manager appropriately sets before calling a participant, but *never
+ever* in member variables.  
+===========
+
+[TIP]
+=====
+Participants usually don't need a reference to their TransactionManager. 
+If required, the participant can implement a method:
+
+`setTransactionManager(TransactionManager tm)` 
+
+that will get called once at initialization time using reflection.
+=====
+
+=== TM use of spaces
+
+The TransactionManager uses 3 different spaces for operation.
+
+We see in the previous diagram that the producer (depicted as 'client' in the
+image) places entries in a Space, to be consumed by the TransactionManager.
+
+This can be the general purpose _default_ space (`tspace:default`), but in 
+high demanding environments, it is possible to define a separate space,
+defined as `input-space`.
+
+Internally, it also needs a transient space to keep track of the in-flight
+transactions. Again, if not specified, the TransactionManager will use
+`tspace:default`, but it is possible to configure a separate space for
+that using the `space` property in the XML configuration file.
+
+For recovery purposes, a persistent space (defined with the property
+`persistent-space`) is required, i.e.: `je:XXXX` (XXXX being the name
+of the space). But taking snapshots to disk reduces the TM speed by
+probably an order of magnitude, and many applications that use the
+TransactionManager don't take advantage of its recovery features, 
+this space defaults to an internal space.
+
+=== Configuration
+
+The TransactionManager is implemented by +org.jpos.transaction.TransactionManager+
+but +QFactory.properties+ defines a couple of handy names for it:
+
+* +txnmgr+, or
+* +transaction-manager+
+
+So a TM configuration can look like this:
+
+[source,xml]
+------------
+<txnmgr name="myTM" logger="Q2" realm="TM">
+  <property name="queue" value="myTMQueue" />
+  ...
+  ...
+</txnmgr>
+------------
+
+or
+
+[source,xml]
+------------
+<transaction-manager name="myTM" logger="Q2" realm="TM">
+  <property name="queue" value="myTMQueue" />
+  ...
+  ...
+</transaction-manager>
+------------
+
+[NOTE]
+======
+The +name+ attribute is not technically required, if ommitted, the transaction manager would
+get registered in the +NameRegistrar+ using its root-element name (i.e.: +txnmgr+ or
++transaction-manager+ depending on your configuration). But if you are deploying more than
+one TM in the same Q2 instance, the second one would get a +duplicate name+ error, and your
+XML QBean descriptor would get renamed to +.DUP+. Using the +name+ attribute with unique
+names solves the problem.
+======
+
+The TM requires a mandatory property (+queue+) and honors some optional ones, 
+which have sensible defaults.
+
+* *queue* +
+This is the Space-based _queue_ where the TM looks for transactions to be processed.
+As described above, these transactions are actually +Serializable+ objects, typically
+an instance of +org.jpos.transaction.Context+. This is a mandatary property.
+
+* *input-space* +
+This is the Space where the TransactionManager's sessions wait for transactions
+to be queued. It defaults to the default space returned by `SpaceFactory.getSpace()`
+that is currently set to `tspace:default`.
+
+* *space* +
+Space used by the TransactionManager to handle in-flight transactions. The TM uses
+a Space-based circular queue. This Space also uses the system's default, but
+in high load systems it is reasonable to consider using a unique space for
+each TransactionManager.
+
+* *persistent-space* +
+If the application takes advantage of crash recovery features, a persistent
+space has to be defined. It can be any persistent space, such as `jdbm` or
+the more robust `je` based spaces (i.e. `je:mytm:/path/to/mytm`).
+
+* *recover* +
+When the TransactionManager starts, it checks the persistent space for 
+in-flight transactions from a previous run. If this feature is not being
+used, it is recommended to set `recover` to false (although it doesn't hurt
+to keep it on in most situations).
+
+* *debug* +
+If true, the TransactionManager logs a small report after each transaction
+indicating which participants took place. The log looks like this:
+
+[source,xml]
+------------
+  <debug>
+    txnmgr-1:2
+            prepare: org.jpos.jcard.PrepareContext NO_JOIN
+            prepare: org.jpos.jcard.CheckVersion READONLY NO_JOIN
+            prepare: org.jpos.transaction.Open READONLY NO_JOIN
+            prepare: org.jpos.jcard.Switch READONLY NO_JOIN
+      groupSelector: notsupported prepareresponse close sendresponse
+            prepare: org.jpos.jcard.NotSupported NO_JOIN
+            prepare: org.jpos.jcard.PrepareResponse NO_JOIN
+            prepare: org.jpos.transaction.Close READONLY
+            prepare: org.jpos.jcard.SendResponse READONLY
+            prepare: org.jpos.jcard.ProtectDebugInfo READONLY
+            prepare: org.jpos.transaction.Debug READONLY
+             commit: org.jpos.transaction.Close
+             commit: org.jpos.jcard.SendResponse
+             commit: org.jpos.jcard.ProtectDebugInfo
+             commit: org.jpos.transaction.Debug
+    head=3, tail=3, outstanding=0, active-sessions=2/2, tps=0, peak=0, 
+    avg=0.00, elapsed=22ms
+  </debug>
+------------
+
+* *profiler* +
+If the profiler property is set to true, in addition to the debug output, the
+TransactionManager records the time consumed by each participant callback.
+Setting profiler to `true` also sets `debug` to true automatically.
+
+This adds the following information to the log
+
+[source,xml]
+------------
+  <debug>
+    ....
+    ....
+    <profiler>
+      prepare: org.jpos.jcard.PrepareContext [0.0/0.0]
+      prepare: org.jpos.jcard.CheckVersion [0.0/0.0]
+      prepare: org.jpos.transaction.Open [0.5/0.6]
+      prepare: org.jpos.jcard.Switch [0.0/0.6]
+      prepare: org.jpos.jcard.NotSupported [0.1/0.7]
+      prepare: org.jpos.jcard.PrepareResponse [5.8/6.6]
+      prepare: org.jpos.transaction.Close [0.0/6.6]
+      prepare: org.jpos.jcard.SendResponse [0.0/6.6]
+      prepare: org.jpos.jcard.ProtectDebugInfo [0.0/6.7]
+      prepare: org.jpos.transaction.Debug [0.0/6.7]
+       commit: org.jpos.transaction.Close [1.0/7.7]
+       commit: org.jpos.jcard.SendResponse [4.3/12.0]
+       commit: org.jpos.jcard.ProtectDebugInfo [0.2/12.3]
+       commit: org.jpos.transaction.Debug [9.3/21.7]
+      end [22.8/22.8]
+    </profiler>
+  </debug>
+------------
+
+* *sessions* +
+Defines the number of simultaneous sessions (Threads) used to process transactions.
+Defaults to one. It is recommended to keep the `sessions` property within a
+reasonable value commensurate the number of CPU cores of the system. A
+large number here just slows down the capacity of the system.
+
+* *max-sessions* +
+In order to deal with occasional traffic spikes (sometimes caused by small
+network glitches), the TransactionManager can temporarily increase the
+number of sessions. This property defines that maximum. It defaults to
+the value set for `sessions`. For obvious reasons, `max-sessions` can't
+be less than `sessions`.
+
+* *max-active-sessions* +
+When using the TransactionManager _continuations_ feature (where the prepare callback
+returns `PAUSE` modifier), it is possible that a small number of sessions
+can process a large number of in-flight transactions. Those transactions
+may place in the `Context` references to live objects such as JDBC
+sessions. In order to place a cap on the number of in-flight transactions
+to avoid exhausting resources (for example a JDBC pool), this
+`max-active-sessions` property can be set.
+The default is 0, which means no limit is imposed.
+
+[TIP]
+=====
+If you're _pausing_ your transactions, please read the previous paragraph
+multiple times and make sure you understand it. 
+=====
+
+* *call-selector-on-abort* +
+The transaction manager calls the `prepare` method, and then, if the participant
+implements the `GroupSelector` interface, it calls its `select` method, regardless
+of the result of the `prepare` call. While in practice that's a reasonable and
+useful behavior, it can be argued that technically, the TM shouldn't call `select`
+if the transaction is bound to abort. We have provided this configuration parameter
+that can be set to `false` in order to enable that behavior.
+
+
+=== TransactionStatusListener
+
+It is possible to monitor a TransactionManager by adding a `TransactionListener`
+
+The interface is very simple:
+
+[source,java]
+-------------
+public interface TransactionStatusListener extends EventListener {
+    public void update (TransactionStatusEvent e);
+}
+-------------
+
+* see link:http://jpos.org/doc/javadoc/org/jpos/transaction/TransactionStatusListener.html[TransactionStatusListener] and
+* link:http://jpos.org/doc/javadoc/org/jpos/transaction/TransactionStatusEvent.html[TransactionStatusEvent]
+
+A `TransactionStatusListener` can be either added dynamically (using the
+`TransactionManager.addListener(TransactionStatusListener)` method) or using
+XML configuration like this:
+
+[source,xml]
+------------
+<transaction-manager name="myTM" logger="Q2" realm="TM">
+  ...
+  ...
+  <status-listener class="your.transaction.Listener" />
+  ...
+  ...
+</transaction-manager>
+------------
+
+[TIP]
+=====
+standard logger, realm, and properties can be used.
+=====
+
+[NOTE]
+======
+Calls to the transaction status listener are synchronous, the implementation
+is expected to return really fast.
+======
+
+The `TMMON` CLI command (see <<cli_commands>>) is an example of a `TransactionStatusListener` interface
+and so is the `org.jpos.transaction.gui.TMMonitor` implementation.
+

@@ -1,0 +1,70 @@
+== Using jPOS
+
+You don't have to build jPOS in order to use it in your projects,
+although you are welcome to try and build it (see <<building>>) for 
+learning purposes or if you want to contribute to the project.
+
+jPOS produces Maven compatible +poms+ and regularly publishes releases
+to http://search.maven.org[Maven Central].
+
+If you want to use it from Maven, you can add this dependency to your +pom+:
+
+Here is a sample POM
+[source,xml,subs="attributes+"]
+-----------------------------------------------------------------------------
+<dependency>
+    <groupId>org.jpos</groupId>
+    <artifactId>jpos</artifactId>
+    <version>{jpos_version}</version>
+</dependency>
+-----------------------------------------------------------------------------
+
+or Gradle dependency:
+
+[source,subs="attributes+"]
+-----------------------------------------------------------------------------
+org.jpos:jpos:{jpos_version}
+-----------------------------------------------------------------------------
+
+[TIP]
+=====
+The stable release is {jpos_version}, development release is {jpos_snapshot_version}.
+=====
+
+jPOS uses the following dependency not available in Maven central, so you need to add
+the following repository
+
+* http://download.oracle.com/maven (required by Berkeley DB Java Edition)
+
+[NOTE]
+======
+We publish SNAPSHOT daily builds (i.e. version {jpos_snapshot_version}) to 
+the http://jpos.org/maven[jPOS Maven repository] and stable releases to Maven Central.
+Please note the *compat_1_5_2* module is only published to jPOS Maven repo.
+======
+
+if you use Gradle, you can configure:
+
+[source,groovy,subs="attributes+"]
+-----------------------------------------------------------------------------
+
+repositories {
+    mavenCentral()
+    maven { url 'http://jpos.org/maven' }
+    maven { url 'http://download.oracle.com/maven' }
+    mavenLocal()
+}
+
+dependencies {
+    compile org.jpos:jpos:{jpos_version}
+    testCompile 'junit:junit4.8.2'
+}
+-----------------------------------------------------------------------------
+
+[TIP]
+=====
+If you're building a jPOS application, the easiest way is to clone the
+http://github.com/jpos/jPOS-template[jPOS Template] 
+project and take it from there.
+=====
+

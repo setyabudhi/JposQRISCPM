@@ -1,0 +1,42 @@
+#
+# Test data - ANSI X9.24
+# bin/smconsole -lmk cfg/lmk-test FK 64 BDK \
+#               6AC292FAA1315B4D 0000000000000000 0000000000000000
+#
+test-pin-key.key=7447BD5781B80F95
+test-pin-key.checkvalue=06AD9C
+test-pin-key.length=64
+test-pin-key.type=TPK
+test-pin-key.class=org.jpos.security.SecureDESKey
+
+#
+# Test data - ANSI X9.24:2009
+# bin/smconsole -lmk cfg/lmk-test FK 128 BDK \
+#               6AC292FAA1315B4D858AB3A3D7D5933A 00000000000000000000000000000000 00000000000000000000000000000000
+#
+test3des-pin-key.key=7447BD5781B80F95B2D178074DB664A4
+test3des-pin-key.checkvalue=AF8C07
+test3des-pin-key.length=128
+test3des-pin-key.type=TPK
+test3des-pin-key.class=org.jpos.security.SecureDESKey
+
+#
+# bin/smconsole -lmk cfg/lmk-test FK 128 BDK \
+#         0123456789ABCDEFFEDCBA9876543210 \
+#         00000000000000000000000000000000 \
+#         00000000000000000000000000000000
+test-bdk.key=26FB71EA0C9CBBA1D51CA00CFFA36374
+test-bdk.checkvalue=08D7B4
+test-bdk.length=128
+test-bdk.type=BDK
+test-bdk.class=org.jpos.security.SecureDESKey
+
+#
+# bin/smconsole -lmk cfg/lmk-test FK 64 ZPK \
+#               0123456789ABCDEF 0000000000000000 0000000000000000
+pos.key=7BA00300BDE4343E
+pos.checkvalue=D5D44F
+pos.length=64
+pos.type=ZPK
+pos.class=org.jpos.security.SecureDESKey
+
